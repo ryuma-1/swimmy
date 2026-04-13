@@ -1,3 +1,7 @@
+require 'dotenv'
+
+Dotenv.load
+
 module Swimmy
   module Command
     class MinutesUploader < Swimmy::Command::Base
@@ -22,8 +26,6 @@ module Swimmy
           sheet = spreadsheet.sheet("calendar", Swimmy::Resource::Calendar)
           calendars = sheet.fetch
 
-          client.say(channel: data.channel, text: "予定の取得に成功しました．#{calendars.size}件の予定が見つかりました．")
-
           # ハッシュ（辞書）をループして処理
           MINUTE_TYPES.each do |name, index|
             target_calendar = calendars[index]
@@ -32,15 +34,35 @@ module Swimmy
             # カレンダーが存在しない場合のガード
             next unless target_calendar
 
+            date = Date.today
+
+            if (!match[:expression].nil?) then
+              date = Date.parse(match[:expression]) rescue nil
+              if date.nil?
+                client.say(channel: data.channel, text: "無効な日付形式です．正しい形式で入力してください．例: 2024-07-01")
+                next
+              end
+            end
+
             cal_service = Swimmy::Service::CalendarGateway.new([target_calendar])
-            events = cal_service.date_to_events(Date.today)
+            events = cal_service.date_to_events(date)
 
             if events.empty?
-              client.say(channel: data.channel, text: "【#{name}】本日のイベントはありません．")
+              client.say(channel: data.channel, text: "【#{name}】#{date}のイベントはありません．")
             else
               events.each do |event|
                 client.say(channel: data.channel, text: "【#{name}】Event: #{event.summary} at #{event.start}")
               end
+
+              # 1. 実行ファイルのあるディレクトリを絶対パスで特定
+              # __dir__ は、このRubyファイルが存在するディレクトリのフルパスを返します
+              executable_path = File.expand_path("../../../bin/rask_CLI", __dir__)
+
+              # 2. 実行
+              # パスにスペースが含まれても大丈夫なようにダブルクォートで囲むのが安全です
+              output = `#{executable_path} search-today-doc #{name}`
+              client.say(channel: data.channel, text: "Doc url :\n#{output}")
+
             end
           end
 
