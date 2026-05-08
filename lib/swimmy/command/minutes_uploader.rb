@@ -1,14 +1,14 @@
 require 'dotenv'
+require 'json'
 
 Dotenv.load
 
 module Swimmy
   module Command
     class MinutesUploader < Swimmy::Command::Base
-      # 定数はクラスの直下に置くのが一般的です
       MINUTE_TYPES = {
-        gn:  1,
-        new: 2 
+        GN:  1,
+        New: 2 
       }.freeze
 
       command "minutes_uploader" do |client, data, match|
@@ -44,31 +44,135 @@ module Swimmy
               end
             end
 
-            cal_service = Swimmy::Service::CalendarGateway.new([target_calendar])
+            cal_service = Swimmy::Service::CalendarGateway.new(target_calendar)
             events = cal_service.date_to_events(date)
 
             if events.empty?
               client.say(channel: data.channel, text: "【#{name}】#{date}のイベントはありません．")
             else
+              current_event_num = nil
               events.each do |event|
                 client.say(channel: data.channel, text: "【#{name}】Event: #{event.summary} at #{event.start}")
+                current_event_num = Minutes.title_to_num(event.summary)
               end
 
               # 1. 実行ファイルのあるディレクトリを絶対パスで特定
               # __dir__ は、このRubyファイルが存在するディレクトリのフルパスを返します
               executable_path = File.expand_path("../../../bin/rask_CLI", __dir__)
 
-              # 2. 実行
-              # パスにスペースが含まれても大丈夫なようにダブルクォートで囲むのが安全です
-              output = `#{executable_path} search-today-doc #{name}`
-              client.say(channel: data.channel, text: "Doc url :\n#{output}")
+              json = `#{executable_path} search-doc --content "#{name}" --start-at #{Time.now.utc.strftime('%Y-%m-%dT%H:%M:%SZ')} --term-day 60`
 
+              File.open("log.txt", "a") do |f|
+                f.puts "Raw JSON output: #{json}"
+              end
+
+              # 2. JSONをパース（キーをシンボルにする）
+              raw_data = JSON.parse(json, symbolize_names: true)
+
+              # 3. 配列の各要素を Minutes クラスに変換
+              minutes_list = raw_data.map do |doc|
+                Minutes.new(
+                  Minutes.title_to_num(doc[:content]), # num
+                  Minutes.string_to_type(name.to_s), # type
+                  doc[:content],                          # title (contentをタイトルと仮定)
+                  doc[:description] || "",                # body (descriptionを本文と仮定)
+                  doc[:start_at] ? Time.parse(doc[:start_at]) : nil, # start_at
+                  doc[:end_at] ? Time.parse(doc[:end_at]) : nil,      # end_at
+                  doc[:url] || ""                         # url (urlをURLと仮定)
+                )
+              end
+
+              client.say(channel: data.channel, text: "Found #{minutes_list.size} minutes for #{name}.")
+
+              # current_event_num と比較して，1つ前の議事録を見つける
+              second_largest_minutes = minutes_list.select { |m| m.num < current_event_num }.max_by(&:num)
+
+              client.say(channel: data.channel, text: "前回の議事録の URL : #{second_largest_minutes.url}") if second_largest_minutes && second_largest_minutes.url
             end
           end
-
         rescue => e
           client.say(channel: data.channel, text: "エラーが発生しました: #{e.message}")
-          puts e.backtrace
+        end
+      end
+
+      class Minutes
+        TYPE_NEW = "new"
+        TYPE_GN = "gn"
+
+
+        def initialize(num, type, title, body, start_at, end_at, url)
+          @num = num
+          @title = title
+          @body = body
+          @type = type
+          @start_at = start_at
+          @end_at = end_at
+          @url = trim_url(url)
+        end
+
+
+
+        def self.title_to_num(title)
+          # 第-回の形式から数字を抽出する正規表現
+          match = title.match(/第\s*(\d+)\s*回/)
+          if match
+            return match[1].to_i  # 抽出した数字を整数に変換して返す
+          else
+            return nil  # タイトルに数字が含まれていない場合は nil を返す
+          end
+        end
+      
+        def self.string_to_type(name)
+          if name.nil?
+            raise ArgumentError, "Type name cannot be nil"
+          end
+          unless name.is_a?(String)
+            raise ArgumentError, "Type name must be a string"
+          end
+
+          case name.downcase
+          when 'new'
+            TYPE_NEW
+          when 'gn'
+            TYPE_GN
+          else
+            raise ArgumentError, "Unknown type: #{name}"
+          end
+        end
+
+        def num
+          @num
+        end
+
+        def title
+          @title
+        end
+
+        def body
+          @body
+        end
+
+        def type
+          @type
+        end
+
+        def start_at
+          @start_at
+        end
+
+        def end_at
+          @end_at
+        end
+
+        def url
+          @url
+        end
+
+        private
+
+        # URL から.jsonを取り除く関数
+        def trim_url(url)
+          return url.sub(/\.json$/, '')
         end
       end
     end
