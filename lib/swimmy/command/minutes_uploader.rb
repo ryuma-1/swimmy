@@ -26,9 +26,7 @@ module Swimmy
             # spreadsheet オブジェクトの取得
             sheet = spreadsheet.sheet("calendar", Swimmy::Resource::Calendar)
             calendars = sheet.fetch
-
             target_calendar = calendars[index]
-            client.say(channel: data.channel, text: "Processing calendar: #{target_calendar.name} (ID: #{target_calendar.id})")
 
             if target_calendar.nil?
               raise "カレンダーが見つかりません: #{name} (インデックス: #{index})"
@@ -51,7 +49,7 @@ module Swimmy
           current_event_num = nil
           begin
             events.each do |event|
-              client.say(channel: data.channel, text: "【#{name}】Event: #{event.summary} at #{event.start}")
+              client.say(channel: data.channel, text: "【#{name}】#{event.summary} #{event.start}")
               current_event_num = Minutes.title_to_num(event.summary)
             end
           rescue => e
@@ -94,7 +92,7 @@ module Swimmy
           end
           
           # 6. Slackへの出力
-          client.say(channel: data.channel, text: "前回の議事録 : #{second_largest_minutes.url}") if second_largest_minutes && second_largest_minutes.url
+          client.say(channel: data.channel, text: "前回の議事録 : #{second_largest_minutes.url}")
           client.say(channel: data.channel, text: "議事録作成 https://rask.nomlab.org/documents/new")
           
         end
