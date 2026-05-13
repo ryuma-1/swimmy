@@ -48,9 +48,14 @@ module Swimmy
           # 3. イベントの出力と議事録の回数の特定
           current_event_num = nil
           begin
-            events.each do |event|
-              client.say(channel: data.channel, text: "【#{name}】#{event.summary} #{event.start}")
-              current_event_num = Minutes.title_to_num(event.summary)
+            event = events.first # 予定が複数ある場合は最初の予定を使用
+            meet_ev = MeetingEvent.new(event.summary, event.start)
+            current_event_num = Minutes.title_to_num(event.summary)
+            client.say(channel: data.channel, text: "【#{name}】#{meet_ev.name} #{meet_ev.date}")
+
+            # 談話会の場合は議事録を提示しないので次のイベントへ
+            if meet_ev.type == MeetingEvent::TYPE_COLL
+              next
             end
           rescue => e
             client.say(channel: data.channel, text: "イベントの処理に失敗しました: #{e.message}")
@@ -90,13 +95,52 @@ module Swimmy
             client.say(channel: data.channel, text: "議事録の作成に失敗しました: #{e.message}")
             next
           end
-          
+
           # 6. Slackへの出力
           client.say(channel: data.channel, text: "前回の議事録 : #{second_largest_minutes.url}")
           client.say(channel: data.channel, text: "議事録作成 https://rask.nomlab.org/documents/new")
-          
         end
 
+      end
+
+      class MeetingEvent
+        TYPE_CONS = "検討打合せ"
+        TYPE_COLL = "談話会"
+
+        def initialize(name, date)
+          @name = name
+          @type = self.class.name_to_type(name)
+          @date = date
+        end
+
+        def self.name_to_type(name)
+          if name.nil?
+            raise ArgumentError, "Type name cannot be nil"
+          end
+          unless name.is_a?(String)
+            raise ArgumentError, "Type name must be a string"
+          end 
+
+          if name.include?(TYPE_CONS)
+            return TYPE_CONS
+          elsif name.include?(TYPE_COLL)
+            return TYPE_COLL
+          else
+            raise ArgumentError, "Unknown type: #{name}"
+          end
+        end
+
+        def name
+          @name
+        end
+
+        def type
+          @type
+        end
+
+        def date
+          @date
+        end
       end
 
       class Minutes
