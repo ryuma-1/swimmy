@@ -66,7 +66,7 @@ module Swimmy
           begin 
             # 実行ファイルのあるディレクトリを絶対パスで特定
             executable_path = File.expand_path("../../../bin/rask_CLI", __dir__)
-            json = `#{executable_path} search-doc --content "#{name}" --start-at #{Time.now.utc.strftime('%Y-%m-%dT%H:%M:%SZ')} --term-day 30`
+            json = `#{executable_path} search-doc --content "#{name}" --start-at #{Time.now.utc.strftime('%Y-%m-%dT%H:%M:%SZ')} --term-day 30 --is-json`
           rescue => e
             client.say(channel: data.channel, text: "rask_CLIの実行に失敗しました: #{e.message}")
             next
@@ -76,7 +76,7 @@ module Swimmy
           begin        
             # JSONをパース（キーをシンボルにする）
             raw_data = JSON.parse(json, symbolize_names: true)
-
+            
             # 配列の各要素を Minutes クラスに変換
             minutes_list = raw_data.map do |doc|
               Minutes.new(
@@ -97,8 +97,8 @@ module Swimmy
           end
 
           # 6. Slackへの出力
-          client.say(channel: data.channel, text: "前回の議事録 : #{second_largest_minutes.url}")
-          client.say(channel: data.channel, text: "議事録作成 https://rask.nomlab.org/documents/new")
+          client.say(channel: data.channel, text: "前回の議事録: #{second_largest_minutes.url}")
+          client.say(channel: data.channel, text: "議事録作成: https://rask.nomlab.org/documents/new")
         end
 
       end
@@ -159,6 +159,13 @@ module Swimmy
 
 
         def self.title_to_num(title)
+          if title.nil?
+            raise ArgumentError, "Title cannot be nil"
+          end
+          unless title.is_a?(String)
+            raise ArgumentError, "Title must be a string"
+          end
+
           # 第-回の形式から数字を抽出する正規表現
           match = title.match(/第\s*(\d+)\s*回/)
           if match
