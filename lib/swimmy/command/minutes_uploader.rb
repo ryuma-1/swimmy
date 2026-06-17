@@ -12,16 +12,9 @@ module Swimmy
       }.freeze
 
       command "minutes_uploader" do |client, data, match|
-        # 1. Google OAuth の認証
-        begin
-          google_oauth = Swimmy::Resource::GoogleOAuth.new('config/credentials.json', 'config/tokens.json')
-        rescue => e
-          client.say(channel: data.channel, text: "Google OAuthの認証に失敗しました．")
-          next
-        end
-
         MINUTE_TYPES.each do |name, index|
-          # 2. 予定の取得処理
+          # イベントの取得処理
+          events = []
           begin
             # spreadsheet オブジェクトの取得
             sheet = spreadsheet.sheet("calendar", Swimmy::Resource::Calendar)
@@ -35,7 +28,7 @@ module Swimmy
             cal_service = Swimmy::Service::CalendarGateway.new(target_calendar)
             events = cal_service.date_to_events(Date.today)
           rescue => e
-            client.say(channel: data.channel, text: "予定の取得に失敗しました: #{e.message}")
+            client.say(channel: data.channel, text: "イベントの取得に失敗しました: #{e.message}")
             next
           end
 
@@ -44,27 +37,37 @@ module Swimmy
             client.say(channel: data.channel, text: "【#{name}】#{Date.today}のイベントはありません．")
             next
           end
-
-          # 3. イベントの出力と議事録の回数の特定
+        
+          # 検討打合せのイベントを特定
+          begin
+          meet_event = events
+            .map { |event| MeetingEvent.new(event.summary, event.start) }
+            .find { |e| e.type == MeetingEvent::TYPE_CONS }
+          rescue => e
+            client.say(channel: data.channel, text: "検討打合せのイベントの取得に失敗しました: #{e.message}")
+            next
+          end 
+          
+          # 検討打合せのイベントがない場合はその旨を伝えて終了
+          if meet_event.nil?
+            client.say(channel: data.channel, text: "【#{name}】#{Date.today}のイベントに検討打合せはありません．")
+            next
+          end
+          
+          # イベントの出力と議事録の回数の特定
           current_event_num = nil
           begin
-            event = events.first # 予定が複数ある場合は最初の予定を使用
-            meet_ev = MeetingEvent.new(event.summary, event.start)
-            current_event_num = Minutes.title_to_num(event.summary)
-            client.say(channel: data.channel, text: "【#{name}】#{meet_ev.name} #{meet_ev.date}")
+            current_event_num = Minutes.title_to_num(meet_event.name)
+            client.say(channel: data.channel, text: "【#{name}】#{meet_event.name} #{meet_event.date}")
 
-            # 談話会の場合は議事録を提示しないので次のイベントへ
-            if meet_ev.type == MeetingEvent::TYPE_COLL
-              next
-            end
           rescue => e
-            client.say(channel: data.channel, text: "イベントの処理に失敗しました: #{e.message}")
+            client.say(channel: data.channel, text: "議事録の処理に失敗しました: #{e.message}")
             next
           end
 
-          # 4. rask_CLI を実行して資料の情報を取得
+          # rask_CLI を実行して資料の情報を取得
           begin 
-            # 実行ファイルのあるディレクトリを絶対パスで特定
+            # 実行ファイルのあるディレクトリを相対パスで特定
             executable_path = File.expand_path("../../../bin/rask_CLI", __dir__)
             json = `#{executable_path} search-doc --content "#{name}" --start-at #{Time.now.utc.strftime('%Y-%m-%dT%H:%M:%SZ')} --term-day 30 --is-json`
           rescue => e
@@ -72,12 +75,12 @@ module Swimmy
             next
           end
 
-          # 5. JSONのパースと議事録の特定
+          # JSONのパースと議事録の特定
           begin        
             # JSONをパース（キーをシンボルにする）
             raw_data = JSON.parse(json, symbolize_names: true)
             
-            # 配列の各要素を Minutes クラスに変換
+            # 配列の各要素を Minutes オブジェクトに変換
             minutes_list = raw_data.map do |doc|
               Minutes.new(
                 Minutes.title_to_num(doc[:content]), # num
@@ -89,25 +92,37 @@ module Swimmy
                 doc[:url] || ""                         # url (urlをURLと仮定)
               )
             end
+ 
             # current_event_num と比較して，1つ前の議事録を見つける
-            second_largest_minutes = minutes_list.select { |m| m.num < current_event_num }.max_by(&:num)
+            previous_minute = minutes_list.select { |m| m.num < current_event_num }.max_by(&:num)
+
+            if previous_minute.nil?
+              raise "前回の議事録が見つかりません: current_event_num=#{current_event_num}"
+            end
           rescue => e
-            client.say(channel: data.channel, text: "議事録の作成に失敗しました: #{e.message}")
+            client.say(channel: data.channel, text: "議事録オブジェクトの処理に失敗しました: #{e.message}")
             next
           end
 
-          # 6. Slackへの出力
-          client.say(channel: data.channel, text: "前回の議事録: #{second_largest_minutes.url}")
+          # Slackへの出力
+          client.say(channel: data.channel, text: "前回の議事録: #{previous_minute.url}")
           client.say(channel: data.channel, text: "議事録作成: https://rask.nomlab.org/documents/new")
         end
-
       end
 
       class MeetingEvent
         TYPE_CONS = "検討打合せ"
         TYPE_COLL = "談話会"
+        OTHER = "その他"
 
         def initialize(name, date)
+          unless name.is_a?(String)
+            raise ArgumentError, "Event name must be a string"
+          end
+          unless date.is_a?(DateTime)
+            raise ArgumentError, "Event date must be a DateTime object"
+          end
+
           @name = name
           @type = self.class.name_to_type(name)
           @date = date
@@ -126,7 +141,7 @@ module Swimmy
           elsif name.include?(TYPE_COLL)
             return TYPE_COLL
           else
-            raise ArgumentError, "Unknown type: #{name}"
+            return OTHER
           end
         end
 
@@ -148,6 +163,28 @@ module Swimmy
         TYPE_GN = "gn"
 
         def initialize(num, type, title, body, start_at, end_at, url)
+          unless num.is_a?(Integer)
+            raise ArgumentError, "Minutes number must be an integer"
+          end
+          unless title.is_a?(String)
+            raise ArgumentError, "Minutes title must be a string"
+          end
+          unless body.is_a?(String)
+            raise ArgumentError, "Minutes body must be a string"
+          end
+          unless [TYPE_NEW, TYPE_GN].include?(type)
+            raise ArgumentError, "Minutes type must be either 'new' or 'gn'"
+          end
+          unless start_at.is_a?(Time) || start_at.nil?
+            raise ArgumentError, "Minutes start_at must be a Time object or nil"
+          end
+          unless end_at.is_a?(Time) || end_at.nil?
+            raise ArgumentError, "Minutes end_at must be a Time object or nil"
+          end
+          unless url.is_a?(String)
+            raise ArgumentError, "Minutes url must be a string"
+          end
+          
           @num = num
           @title = title
           @body = body
@@ -171,7 +208,7 @@ module Swimmy
           if match
             return match[1].to_i  # 抽出した数字を整数に変換して返す
           else
-            return nil  # タイトルに数字が含まれていない場合は nil を返す
+            raise ArgumentError, "第-回の形式ではありません: #{title}"
           end
         end
       

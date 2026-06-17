@@ -9,22 +9,19 @@ module Swimmy
   module Service
     class CalendarGateway
 
-      def initialize(calendars)
+      def initialize(calendar)
         @google_oauth = Swimmy::Resource::GoogleOAuth.new(
           'config/credentials.json',
           'config/tokens.json'
         )
-        # calendarsは配列であることを期待
-        @calendars = calendars.is_a?(Array) ? calendars : [calendars]
+        @calendar = calendar
       end
 
       def date_to_events(target_date)
         date = target_date.is_a?(String) ? Date.parse(target_date) : target_date
 
-        @calendars.flat_map do |calendar|
-          json_str = fetch_json_events(calendar.id, date)
-          format_events_from_json(json_str, calendar.name)
-        end
+        json_str = fetch_json_events(@calendar.id, date)
+        format_events_from_json(json_str, @calendar.name)
       end
 
       private
