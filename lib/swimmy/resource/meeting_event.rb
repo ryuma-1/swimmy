@@ -1,9 +1,7 @@
 module Swimmy
   module Resource
     class MeetingEvent
-      TYPE_CONS = "検討打合せ"
-      TYPE_COLL = "談話会"
-      OTHER = "その他"
+      CONSIDERATION = "検討打合せ"
 
       def initialize(name, date)
         unless name.is_a?(String)
@@ -14,38 +12,37 @@ module Swimmy
         end
 
         @name = name
-        @type = self.class.name_to_type(name)
         @date = date
+        @count = self.class.name_to_count(name)
       end
 
-      def self.name_to_type(name)
-        if name.nil?
-          raise ArgumentError, "Type name cannot be nil"
-        end
-        unless name.is_a?(String)
-          raise ArgumentError, "Type name must be a string"
-        end 
-
-        if name.include?(TYPE_CONS)
-          return TYPE_CONS
-        elsif name.include?(TYPE_COLL)
-          return TYPE_COLL
-        else
-          return OTHER
-        end
+      def event_info
+        "Event Name: #{@name}, Date: #{@date}, Count: #{@count}"
       end
 
       def name
         @name
       end
 
-      def type
-        @type
-      end
-
       def date
         @date
       end
+
+      def count
+        @count
+      end
+
+      private
+
+      def self.name_to_count(name)
+        case name
+        when /第(\d+)回/
+          $1.to_i
+        else
+          raise ArgumentError, "Invalid event name format: #{name}"
+        end
+      end
+
     end # class MeetingEvent
   end # module Resource
 end # module Swimmy

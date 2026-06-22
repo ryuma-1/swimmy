@@ -1,114 +1,54 @@
 require 'dotenv'
-require 'json'
 
 Dotenv.load
 
 module Swimmy
   module Command
     class MinutesUploader < Swimmy::Command::Base
-      MINUTE_TYPES = {
-        GN:  1,
-        New: 2 
-      }.freeze
-
       command "minutes_uploader" do |client, data, match|
-        MINUTE_TYPES.each do |name, index|
+        MINUTE_TYPES = %i[GN New].freeze
+        MINUTE_CREATE_URL = "https://rask.nomlab.org/documents/new".freeze
+jj
+        private_constant :MINUTE_TYPES
+
+        MINUTE_TYPES.each do |type|
           # イベントの取得処理
-          events = []
           begin
-            # spreadsheet オブジェクトの取得
             sheet = spreadsheet.sheet("calendar", Swimmy::Resource::Calendar)
-            calendars = sheet.fetch
-            target_calendar = calendars[index]
-
-            if target_calendar.nil?
-              raise "カレンダーが見つかりません: #{name} (インデックス: #{index})"
-            end
-
-            cal_service = Swimmy::Service::CalendarGateway.new(target_calendar)
-            events = cal_service.date_to_events(Date.today)
+            cal_gateway = Swimmy::Service::GoogleCalendarGateway.new(type, sheet)
+            meet_event_factory = Swimmy::Service::MeetingEventFactory.new(cal_gateway)
+            meet_event = meet_event_factory.create(Date.today) || false
           rescue => e
-            client.say(channel: data.channel, text: "イベントの取得に失敗しました: #{e.message}")
+            client.say(channel: data.channel, text: "【#{type}】イベント取得でエラーが発生しました: #{e.message}")
             next
           end
 
-          # 予定がない場合はその旨を伝えて終了
-          if events.empty?
-            client.say(channel: data.channel, text: "【#{name}】#{Date.today}のイベントはありません．")
+          # イベントが存在しない場合の出力
+          if !meet_event
+            client.say(channel: data.channel, text: "【#{type}】本日の検討打合せはありません")
             next
           end
-        
-          # 検討打合せのイベントを特定
+
+          # イベントが存在する場合の出力
+          client.say(channel: data.channel, text: "【#{type}】#{meet_event.name} #{meet_event.date}")
+
+          # 前回の議事録のURLを取得するため，検討打合せの回数から1を引いたものをcountとする
+          target_minutes_count = meet_event.count - 1
+
+          # 議事録の取得処理
           begin
-          meet_event = events
-            .map { |event| Swimmy::Resource::MeetingEvent.new(event.summary, event.start) }
-            .find { |e| e.type == Swimmy::Resource::MeetingEvent::TYPE_CONS }
+            minutes_factory = Swimmy::Service::MinutesFactory.new()
+            target_minutes = minutes_factory.create(target_minutes_count, type)
           rescue => e
-            client.say(channel: data.channel, text: "検討打合せのイベントの取得に失敗しました: #{e.message}")
-            next
-          end 
-          
-          # 検討打合せのイベントがない場合はその旨を伝えて終了
-          if meet_event.nil?
-            client.say(channel: data.channel, text: "【#{name}】#{Date.today}のイベントに検討打合せはありません．")
-            next
-          end
-          
-          # イベントの出力と議事録の回数の特定
-          current_event_num = nil
-          begin
-            current_event_num = Swimmy::Resource::Minutes.title_to_num(meet_event.name)
-            client.say(channel: data.channel, text: "【#{name}】#{meet_event.name} #{meet_event.date}")
-
-          rescue => e
-            client.say(channel: data.channel, text: "議事録の処理に失敗しました: #{e.message}")
+            client.say(channel: data.channel, text: "【#{type}】議事録探索でエラーが発生しました: #{e.message}")
             next
           end
 
-          # rask_CLI を実行して資料の情報を取得
-          begin 
-            # 実行ファイルのあるディレクトリを相対パスで特定
-            executable_path = File.expand_path("../../../bin/rask_CLI", __dir__)
-            json = `#{executable_path} search-doc --content "#{name}" --start-at #{Time.now.utc.strftime('%Y-%m-%dT%H:%M:%SZ')} --term-day 30 --is-json`
-          rescue => e
-            client.say(channel: data.channel, text: "rask_CLIの実行に失敗しました: #{e.message}")
-            next
-          end
-
-          # JSONのパースと議事録の特定
-          begin        
-            # JSONをパース（キーをシンボルにする）
-            raw_data = JSON.parse(json, symbolize_names: true)
-            
-            # 配列の各要素を Minutes オブジェクトに変換
-            minutes_list = raw_data.map do |doc|
-              Swimmy::Resource::Minutes.new(
-                Swimmy::Resource::Minutes.title_to_num(doc[:content]), # num
-                Swimmy::Resource::Minutes.string_to_type(name.to_s), # type
-                doc[:content],                          # title (contentをタイトルと仮定)
-                doc[:description] || "",                # body (descriptionを本文と仮定)
-                doc[:start_at] ? Time.parse(doc[:start_at]) : nil, # start_at
-                doc[:end_at] ? Time.parse(doc[:end_at]) : nil,      # end_at
-                doc[:url] || ""                         # url (urlをURLと仮定)
-              )
-            end
- 
-            # current_event_num と比較して，1つ前の議事録を見つける
-            previous_minute = minutes_list.select { |m| m.num < current_event_num }.max_by(&:num)
-
-            if previous_minute.nil?
-              raise "前回の議事録が見つかりません: current_event_num=#{current_event_num}"
-            end
-          rescue => e
-            client.say(channel: data.channel, text: "議事録オブジェクトの処理に失敗しました: #{e.message}")
-            next
-          end
-
-          # Slackへの出力
-          client.say(channel: data.channel, text: "前回の議事録: #{previous_minute.url}")
-          client.say(channel: data.channel, text: "議事録作成: https://rask.nomlab.org/documents/new")
+          # 結果をSlackへの出力
+          client.say(channel: data.channel, text: "前回の議事録: #{target_minutes.title} #{target_minutes.url}")
+          client.say(channel: data.channel, text: "議事録作成: #{MINUTE_CREATE_URL}")
         end
       end
-    end
-  end
-end
+    end # class MinutesUploader
+  end # module Command
+end # module Swimmy
