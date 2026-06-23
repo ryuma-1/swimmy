@@ -1,6 +1,7 @@
 module Swimmy
   module Resource
     class Minutes
+      MIN_COUNT = 1
       TITLE = "検討打合せ".freeze
       COUNT_REGEX = /第\s*(\d+)\s*回/.freeze
       TYPE = {
@@ -9,6 +10,25 @@ module Swimmy
       }.freeze
 
       def initialize(count, title, body, start_at, end_at, url)
+        if count.nil?
+          raise ArgumentError, "count cannot be nil"
+        end
+        if title.nil?
+          raise ArgumentError, "title cannot be nil"
+        end
+        if body.nil?
+          raise ArgumentError, "body cannot be nil"
+        end
+        if start_at.nil?
+          raise ArgumentError, "start_at cannot be nil"
+        end
+        if end_at.nil?
+          raise ArgumentError, "end_at cannot be nil"
+        end
+        if url.nil?
+          raise ArgumentError, "url cannot be nil"
+        end
+
         unless count.is_a?(Integer)
           raise ArgumentError, "Minutes count must be an integer"
         end
@@ -26,6 +46,10 @@ module Swimmy
         end
         unless url.is_a?(String)
           raise ArgumentError, "Minutes url must be a string"
+        end
+
+        unless count >= MIN_COUNT
+          raise ArgumentError, "Minutes count must be greater than or equal to #{MIN_COUNT}"
         end
 
         unless self.class.is_valid_content(title)

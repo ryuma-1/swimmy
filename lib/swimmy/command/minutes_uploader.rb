@@ -5,26 +5,28 @@ Dotenv.load
 module Swimmy
   module Command
     class MinutesUploader < Swimmy::Command::Base
+      MINUTE_TYPES = %i[GN New].freeze
+      MINUTE_CREATE_URL = "https://rask.nomlab.org/documents/new".freeze
+      private_constant :MINUTE_TYPES, :MINUTE_CREATE_URL
+
       command "minutes_uploader" do |client, data, match|
-        MINUTE_TYPES = %i[GN New].freeze
-        MINUTE_CREATE_URL = "https://rask.nomlab.org/documents/new".freeze
-jj
-        private_constant :MINUTE_TYPES
+
+        # sheet の取得
+        sheet = spreadsheet.sheet("calendar", Swimmy::Resource::Calendar)
 
         MINUTE_TYPES.each do |type|
           # イベントの取得処理
           begin
-            sheet = spreadsheet.sheet("calendar", Swimmy::Resource::Calendar)
             cal_gateway = Swimmy::Service::GoogleCalendarGateway.new(type, sheet)
             meet_event_factory = Swimmy::Service::MeetingEventFactory.new(cal_gateway)
-            meet_event = meet_event_factory.create(Date.today) || false
+            meet_event = meet_event_factory.create(Date.today)
           rescue => e
             client.say(channel: data.channel, text: "【#{type}】イベント取得でエラーが発生しました: #{e.message}")
             next
           end
 
           # イベントが存在しない場合の出力
-          if !meet_event
+          if meet_event.nil?
             client.say(channel: data.channel, text: "【#{type}】本日の検討打合せはありません")
             next
           end
@@ -39,6 +41,9 @@ jj
           begin
             minutes_factory = Swimmy::Service::MinutesFactory.new()
             target_minutes = minutes_factory.create(target_minutes_count, type)
+            if target_minutes.nil?
+              raise "前回の議事録が見つかりません: count=#{target_minutes_count}, type=#{type}"
+            end
           rescue => e
             client.say(channel: data.channel, text: "【#{type}】議事録探索でエラーが発生しました: #{e.message}")
             next
