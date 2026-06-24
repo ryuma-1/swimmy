@@ -19,7 +19,7 @@ module Swimmy
           begin
             cal_gateway = Swimmy::Service::GoogleCalendarGateway.new(type, sheet)
             meet_event_accessor = Swimmy::Service::MeetingEventAccessor.new(cal_gateway)
-            meet_event = meet_event_accessor.create(Date.today)
+            meet_event = meet_event_accessor.access(Date.today)
           rescue => e
             client.say(channel: data.channel, text: "【#{type}】イベント取得でエラーが発生しました: #{e.message}")
             next
@@ -40,7 +40,7 @@ module Swimmy
           # 議事録の取得処理
           begin
             minutes_accessor = Swimmy::Service::MinutesAccessor.new()
-            target_minutes = minutes_accessor.create(target_minutes_count, type)
+            target_minutes = minutes_accessor.access(target_minutes_count, type)
             if target_minutes.nil?
               raise "前回の議事録が見つかりません: count=#{target_minutes_count}, type=#{type}"
             end

@@ -3,7 +3,7 @@ require 'json'
 module Swimmy
   module Service
     class MinutesAccessor
-      def create(count, type)
+      def access(count, type)
         if count.nil?
           raise ArgumentError, "count cannot be nil"
         end
