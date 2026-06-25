@@ -53,7 +53,7 @@ module Swimmy
         )
 
         minutes
-      end # create
-    end # class MinutesFactory
+      end # access
+    end # class MinutesAccessor
   end # module Service
 end # module Swimmy

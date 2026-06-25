@@ -40,7 +40,7 @@ module Swimmy
         date = target_date.is_a?(String) ? Date.parse(target_date) : target_date
 
         json_str = fetch_json_events(@calendar.id, date)
-        format_events_from_json(json_str, @calendar.name)
+        json_to_event(json_str)
       end
 
       private
@@ -67,19 +67,18 @@ module Swimmy
         res.body
       end
 
-      def format_events_from_json(json_str, calendar_name)
-        json = JSON.parse(json_str)
-        items = json.dig('items') || []
+      def json_to_event(json_str)
+        json_parsed = JSON.parse(json_str)
+        items = json_parsed.dig('items') || []
 
         items.map do |event|
           start_time_raw = event.dig('start', 'dateTime') || event.dig('start', 'date')
           start_time = DateTime.parse(start_time_raw).strftime('%H:%M:%S')
           summary = event['summary']
 
-          Swimmy::Resource::Event.new(start_time, summary, calendar_name)
+          Swimmy::Resource::Event.new(start_time, summary, @calendar.name)
         end
       end
-
     end # class GoogleCalendarGateway
   end # module Service
 end # module Swimmy

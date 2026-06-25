@@ -1,44 +1,38 @@
+require 'date'
 
 module Swimmy
   module Service
     class MeetingEventAccessor
-      def access()
-        events = []
-        begin
-          # spreadsheet オブジェクトの取得
-          sheet = spreadsheet.sheet("calendar", Swimmy::Resource::Calendar)
-          calendars = sheet.fetch
-          target_calendar = calendars[index]
-
-          if target_calendar.nil?
-            raise "カレンダーが見つかりません: #{name} (インデックス: #{index})"
-          end
-
-          cal_service = Swimmy::Service::CalendarGateway.new(target_calendar)
-          events = cal_service.date_to_events(Date.today)
-        rescue => e
-          client.say(channel: data.channel, text: "イベントの取得に失敗しました: #{e.message}")
-          next
+      def initialize(cal_gateway)
+        if cal_gateway.nil?
+          raise ArgumentError, "cal_gateway cannot be nil"
+        end
+        unless cal_gateway.is_a?(Swimmy::Service::GoogleCalendarGateway)
+          raise ArgumentError, "cal_gateway must be a GoogleCalendarGateway object"
         end
 
-        # 予定がない場合はその旨を伝えて終了
+        @cal_gateway = cal_gateway
+      end
+
+      def access(date = Date.today)
+        unless date.is_a?(Date)
+          raise ArgumentError, "Date must be a Date object"
+        end
+
+        events = @cal_gateway.date_to_events(date)
+
+        # 予定がない場合は NullMeetingEvent を返す
         if events.empty?
-          client.say(channel: data.channel, text: "【#{name}】#{Date.today}のイベントはありません．")
-          next
+          return nil
         end
 
         # 検討打合せのイベントを特定
-        begin
+        # 1つのグループに対して1日に2つ以上の検討打合せがある場合は考慮していない
         meet_event = events
-          .map { |event| Swimmy::Resource::MeetingEvent.new(event.summary, event.start) }
-          .find { |e| e.type == Swimmy::Resource::MeetingEvent::TYPE_CONS }
-        rescue => e
-          client.say(channel: data.channel, text: "検討打合せのイベントの取得に失敗しました: #{e.message}")
-          next
-        end
+          .find { |e| e.summary.include?(Swimmy::Resource::MeetingEvent::CONSIDERATION) }
 
-        return meet_event
-      end # def create
-    end # class CalendarGateway
+        meet_event&.then { |e| Swimmy::Resource::MeetingEvent.new(e.summary, e.start) }
+      end # access
+    end # class MeetingEventAccessor
   end # module Service
 end # module Swimmy
