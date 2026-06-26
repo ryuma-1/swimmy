@@ -128,8 +128,8 @@ end
 Swimmy::Command.spreadsheet =
   initialize_spreadsheet(ENV["SWIMMY_SHEET_ID"])
 
-Swimmy::Command.mqtt_client =
-  initialize_mqtt_client(ENV["MQTT_ENDPOINT"])
+# Swimmy::Command.mqtt_client =
+#   initialize_mqtt_client(ENV["MQTT_ENDPOINT"])
 
 ################################################################
 ### Main

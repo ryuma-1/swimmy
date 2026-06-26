@@ -24,5 +24,8 @@ module Swimmy
     autoload :Numbersapi, "#{dir}/numbersapi.rb"
     autoload :GoogleCalendar, "#{dir}/schedule_service.rb"
     autoload :Spotify, "#{dir}/spotify.rb"
+    autoload :GoogleCalendarGateway, "#{dir}/google_calendar_gateway.rb"
+    autoload :MeetingEventAccessor, "#{dir}/meeting_event_accessor.rb"
+    autoload :MinutesAccessor, "#{dir}/minutes_accessor.rb"
   end
 end
