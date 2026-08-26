@@ -128,13 +128,12 @@ module Swimmy
           raise ArgumentError, "Type title must be a string"
         end
 
-        if title.include?(TYPE[:New].to_s.downcase)
-          TYPE[:New]
-        elsif title.include?(TYPE[:GN].to_s.downcase)
-          TYPE[:GN]
-        else
-          raise ArgumentError, "Unknown type: #{title}"
-        end
+        normalized_title = title.unicode_normalize(:nfkc)
+
+        matched_key = TYPE.keys.find { |key| normalized_title.include?(key.to_s) }
+        raise ArgumentError, "Unknown type: #{title}" unless matched_key
+
+        TYPE[matched_key]
       end
 
 
