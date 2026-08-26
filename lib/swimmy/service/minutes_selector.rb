@@ -2,8 +2,8 @@ require 'json'
 
 module Swimmy
   module Service
-    class MinutesAccessor
-      def access(count, type)
+    class MinutesSelector
+      def select(count, type)
         if count.nil?
           raise ArgumentError, "count cannot be nil"
         end
@@ -13,14 +13,11 @@ module Swimmy
         unless count.is_a?(Integer)
           raise ArgumentError, "count must be an Integer"
         end
-        unless Swimmy::Resource::Minutes::TYPE.key?(type)
-          raise ArgumentError, "type must be one of #{Swimmy::Resource::Minutes::TYPE.keys.join(', ')}"
-        end
 
         # rask_CLI を実行して資料の情報を取得
         # 実行ファイルのあるディレクトリを相対パスで特定
         executable_path = File.expand_path("../../../bin/rask_CLI", __dir__)
-        json = `#{executable_path} search-doc --content "#{type.to_s}" --content "#{count}" --start-at #{Time.now.utc.strftime('%Y-%m-%dT%H:%M:%SZ')} --term-day 30 --is-json`
+        json = `#{executable_path} search-doc --content "#{type}" --content "#{count}" --start-at #{Time.now.utc.strftime('%Y-%m-%dT%H:%M:%SZ')} --term-day 30 --is-json`
 
         if json.nil?
           raise "rask_CLI returned nil output for count=#{count}, type=#{type}"
@@ -30,6 +27,7 @@ module Swimmy
           raise "rask_CLI returned empty output for count=#{count}, type=#{type}"
         end
 
+        puts "rask_CLI output: #{json}" # デバッグ用に出力
         # JSONのパースと議事録の特定
         # JSONをパース（キーをシンボルにする）
         raw_data = JSON.parse(json, symbolize_names: true)
@@ -44,12 +42,12 @@ module Swimmy
 
         minutes_date =  raw_data.first
         minutes = Swimmy::Resource::Minutes.new(
-          Swimmy::Resource::Minutes.title_to_count(minutes_date[:content]), # num
-          minutes_date[:content],                          # title (contentをタイトルと仮定)
-          minutes_date[:description] || "",                # body (descriptionを本文と仮定)
-          minutes_date[:start_at] ? Time.parse(minutes_date[:start_at]) : nil, # start_at
-          minutes_date[:end_at] ? Time.parse(minutes_date[:end_at]) : nil,      # end_at
-          minutes_date[:url] || ""                         # url (urlをURLと仮定)
+          Swimmy::Resource::Minutes.title_to_count(minutes_date[:Content]), # num
+          minutes_date[:Content],                          # title (contentをタイトルと仮定)
+          minutes_date[:Description] || "",                # body (descriptionを本文と仮定)
+          minutes_date[:"Start At"] ? Time.parse(minutes_date[:"Start At"]) : nil, # start_at
+          minutes_date[:"End At"] ? Time.parse(minutes_date[:"End At"]) : nil,      # end_at
+          minutes_date[:URL] || ""                         # url (urlをURLと仮定)
         )
 
         minutes

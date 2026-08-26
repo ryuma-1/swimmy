@@ -2,7 +2,7 @@ require 'date'
 
 module Swimmy
   module Service
-    class MeetingEventAccessor
+    class MeetingEventSelector
       def initialize(cal_gateway)
         if cal_gateway.nil?
           raise ArgumentError, "cal_gateway cannot be nil"
@@ -14,7 +14,7 @@ module Swimmy
         @cal_gateway = cal_gateway
       end
 
-      def access(date = Date.today)
+      def select(date = Date.today)
         unless date.is_a?(Date)
           raise ArgumentError, "Date must be a Date object"
         end
@@ -33,6 +33,6 @@ module Swimmy
 
         meet_event&.then { |e| Swimmy::Resource::MeetingEvent.new(e.summary, e.start) }
       end # access
-    end # class MeetingEventAccessor
+    end # class MeetingEventSelector
   end # module Service
 end # module Swimmy
