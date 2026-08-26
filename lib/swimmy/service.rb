@@ -27,5 +27,7 @@ module Swimmy
     autoload :GoogleCalendarGateway, "#{dir}/google_calendar_gateway.rb"
     autoload :MeetingEventAccessor, "#{dir}/meeting_event_accessor.rb"
     autoload :MinutesAccessor, "#{dir}/minutes_accessor.rb"
+    autoload :Homework, "#{dir}/homework.rb"
+    autoload :RaskCliDriver, "#{dir}/rask_cli_driver.rb"
   end
 end
